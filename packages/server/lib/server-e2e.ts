@@ -313,7 +313,11 @@ export class ServerE2E extends ServerBase<SocketE2E> {
 
                   responseBufferStream.end(responseBuffer)
 
-                  this._networkProxy?.setHttpBuffer({
+                  if (!this._networkProxy) {
+                    throw new Error('networkProxy is missing from the e2e-server! Please open an issue with cypress as this should never happen!')
+                  }
+
+                  this._networkProxy.setHttpBuffer({
                     url: newUrl,
                     stream: responseBufferStream,
                     details,

@@ -33,10 +33,6 @@ export class HttpBuffers {
   }
 
   set (obj) {
-    obj = _.cloneDeep(obj)
-    obj.url = stripPort(obj.url)
-    obj.originalUrl = stripPort(obj.originalUrl)
-
     if (this.buffer) {
       debug('warning: overwriting existing buffer...', { buffer: _.pick(this.buffer, 'url') })
     }
