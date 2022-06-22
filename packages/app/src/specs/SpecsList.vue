@@ -104,6 +104,7 @@
           :docs-text-key-path="'specPage.latestRuns.tooltip.linkText'"
           :docs-url="latestRunsDocsUrl"
           data-cy="latest-runs-header"
+          :supplemental-targets="supplementalLatestRunsHeaderTargets"
           @showLogin="()=>showLogin('Specs Latest Runs Tooltip')"
           @showConnectToProject="showConnectToProject"
         />
@@ -185,6 +186,7 @@
             >
               <RunStatusDots
                 v-if="row.data.isLeaf && row.data.data && row.data.data.cloudSpec?.fetchingStatus !== 'FETCHING'"
+                ref="latestRunsRowElements"
                 :gql="row.data.data.cloudSpec ?? null"
                 :spec-file-extension="row.data.data.fileExtension"
                 :spec-file-name="row.data.data.fileName"
@@ -244,6 +246,7 @@ import AverageDuration from './AverageDuration.vue'
 import SpecsListRowItem from './SpecsListRowItem.vue'
 import { gql, useMutation, useSubscription } from '@urql/vue'
 import { computed, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { Specs_SpecsListFragment, SpecsList_GitInfoUpdatedDocument, SpecsListFragment } from '../generated/graphql'
 import { useI18n } from '@cy/i18n'
 import { buildSpecTree, fuzzySortSpecs, getDirIndexes, makeFuzzyFoundSpec, useCachedSpecs } from './spec-utils'
@@ -386,6 +389,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'showCreateSpecModal'): void
 }>()
+
+const latestRunsRowElements = ref<ComponentPublicInstance[]>([])
 
 const showSpecPatternModal = ref(false)
 
@@ -572,6 +577,14 @@ async function refetchFailedCloudData () {
 function refreshPage () {
   location.reload()
 }
+
+const supplementalLatestRunsHeaderTargets = computed(() => {
+  if (isProjectDisconnected.value) {
+    return latestRunsRowElements.value
+  }
+
+  return undefined
+})
 
 </script>
 

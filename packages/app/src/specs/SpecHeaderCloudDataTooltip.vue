@@ -3,6 +3,7 @@
     placement="top"
     :is-interactive="true"
     :show-group="props.headerTextKeyPath"
+    :shown="isRowItemHovered || undefined"
   >
     <div
       class="cursor-default decoration-dotted underline underline-gray-300 underline-offset-4"
@@ -102,8 +103,10 @@ import SendIcon from '~icons/cy/paper-airplane_x16.svg'
 import ExternalLink from '@cy/gql-components/ExternalLink.vue'
 import { RunsErrorRenderer_RequestAccessDocument, SpecHeaderCloudDataTooltipFragment } from '../generated/graphql'
 import { useI18n } from '@cy/i18n'
-import { computed } from 'vue'
+import { ComponentPublicInstance, computed, ref, watchEffect } from 'vue'
+import type { Ref } from 'vue'
 import { gql, useMutation } from '@urql/vue'
+import { useElementHover } from '@vueuse/core'
 const { t } = useI18n()
 
 const emits = defineEmits<{
@@ -120,6 +123,7 @@ const props = defineProps<{
   noAccessTextKeyPath: string
   docsUrl: string
   docsTextKeyPath: string
+  supplementalTargets?: (ComponentPublicInstance | HTMLElement)[]
 }>()
 
 gql`
@@ -172,6 +176,22 @@ const tooltipTextKey = computed(() => {
   if (['UNAUTHORIZED', 'ACCESS_REQUESTED'].includes(projectConnectionStatus.value)) return props.noAccessTextKeyPath
 
   return props.notConnectedTextKeyPath
+})
+
+const rowItemListeners = ref(new WeakMap<object, Ref<boolean>>())
+
+watchEffect(
+  () => {
+    props.supplementalTargets?.map((tgt) => '$el' in tgt ? tgt.$el : tgt)
+    .filter((el) => !rowItemListeners.value.has(el))
+    .forEach((el) => rowItemListeners.value.set(el, useElementHover(el)))
+  },
+)
+
+const isRowItemHovered = computed(() => {
+  return props.supplementalTargets?.map((tgt) => '$el' in tgt ? tgt.$el : tgt)
+  .map((el) => rowItemListeners.value.get(el))
+  .some((val) => val?.value)
 })
 
 </script>

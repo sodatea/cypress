@@ -10,6 +10,7 @@
     :auto-hide="false /* to prevent the popper from getting focus */"
     :delay="{show: 0, hide: hideDelay }"
     :show-group="showGroup"
+    :shown="shown"
   >
     <slot />
     <template
@@ -39,6 +40,7 @@ const props = withDefaults(defineProps<{
   hideDelay?: number
   instantMove?: boolean
   showGroup?: string
+  shown?: boolean
 }>(), {
   color: 'dark',
   hideArrow: false,
@@ -51,6 +53,7 @@ const props = withDefaults(defineProps<{
   hideDelay: 100,
   instantMove: undefined,
   showGroup: undefined,
+  shown: undefined,
 })
 
 const theme = computed(() => {
