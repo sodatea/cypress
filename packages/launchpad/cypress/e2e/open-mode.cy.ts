@@ -28,6 +28,25 @@ describe('Launchpad: Open Mode', () => {
     cy.get('h1').should('contain', 'Choose a Browser')
   })
 
+  it('includes x-framework and x-dev-server in request to Cypress manifest, even when launched in e2e mode', () => {
+    cy.withCtx((ctx, o) => {
+      o.sinon.spy(ctx.util.fetch)
+    })
+
+    cy.scaffoldProject('todos')
+    cy.openProject('todos', ['--e2e'])
+    cy.visitLaunchpad()
+    cy.get('h1').should('contain', 'Choose a Browser')
+    cy.withCtx((ctx, o) => {
+      expect(ctx.util.fetch).to.have.been.calledWithMatch('https://download.cypress.io/desktop.json', {
+        headers: {
+          'x-framework': 'react',
+          'x-dev-server': 'webpack',
+        },
+      })
+    })
+  })
+
   it('goes to component test onboarding when launched with --component and not configured', () => {
     cy.scaffoldProject('launchpad')
     cy.openProject('launchpad', ['--component'])
@@ -43,37 +62,32 @@ describe('Launchpad: Open Mode', () => {
   // (tested manually on Windows and it works fine)
   if (Cypress.platform !== 'win32') {
     it('auto-selects the browser when launched with --browser', () => {
+      cy.scaffoldProject('launchpad')
+      cy.openProject('launchpad', ['--browser', 'firefox'])
       cy.withCtx((ctx, o) => {
         o.sinon.stub(ctx._apis.projectApi, 'launchProject').rejects(new Error('should not launch project'))
       })
 
-      cy.scaffoldProject('launchpad')
-      cy.openProject('launchpad', ['--browser', 'firefox'])
       // Need to visit after args have been configured, todo: fix in #18776
       cy.visitLaunchpad()
       cy.contains('E2E Testing').click()
       cy.get('h1').should('contain', 'Choose a Browser')
       cy.get('[data-cy-browser=firefox]').should('have.attr', 'aria-checked', 'true')
       cy.get('button[data-cy=launch-button]').invoke('text').should('include', 'Start E2E Testing in Firefox')
-
-      cy.wait(100)
     })
 
     it('auto-launches the browser when launched with --browser --testingType --project', () => {
       cy.scaffoldProject('launchpad')
+      cy.openProject('launchpad', ['--browser', 'firefox', '--e2e'])
       cy.withCtx((ctx, o) => {
         o.sinon.stub(ctx._apis.projectApi, 'launchProject').resolves()
       })
-
-      cy.openProject('launchpad', ['--browser', 'firefox', '--e2e'])
 
       // Need to visit after args have been configured, todo: fix in #18776
       cy.visitLaunchpad()
       cy.get('h1').should('contain', 'Choose a Browser')
       cy.get('[data-cy-browser=firefox]').should('have.attr', 'aria-checked', 'true')
       cy.get('button[data-cy=launch-button]').invoke('text').should('include', 'Start E2E Testing in Firefox')
-
-      cy.wait(100)
 
       cy.withRetryableCtx((ctx) => {
         expect(ctx._apis.projectApi.launchProject).to.be.calledOnce
@@ -215,5 +229,17 @@ describe('Launchpad: Open Mode', () => {
     cy.contains(cy.i18n.launchpadErrors.generic.configErrorTitle)
     cy.contains('Your project does not contain a default supportFile.')
     cy.contains('If a support file is not necessary for your project, set supportFile to false.')
+  })
+
+  // Assert that we do not glob the absolute projectRoot
+  // and fail supportFile lookups during project initialization.
+  // https://github.com/cypress-io/cypress/issues/22040
+  it('opens projects with paths that contain glob syntax', () => {
+    cy.scaffoldProject('project-with-(glob)-[chars]')
+    cy.openProject('project-with-(glob)-[chars]', ['--e2e'])
+    cy.visitLaunchpad()
+
+    cy.get('body').should('not.contain.text', 'Your project does not contain a default supportFile.')
+    cy.get('h1').should('contain', 'Choose a Browser')
   })
 })

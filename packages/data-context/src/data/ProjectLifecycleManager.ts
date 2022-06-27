@@ -23,6 +23,7 @@ import { EventRegistrar } from './EventRegistrar'
 import { getServerPluginHandlers, resetPluginHandlers } from '../util/pluginHandlers'
 import { detectLanguage } from '@packages/scaffold-config'
 import { validateNeedToRestartOnChange } from '@packages/config'
+import { makeTestingTypeData } from './coreDataShape'
 
 export interface SetupFullConfigOptions {
   projectName: string
@@ -180,6 +181,10 @@ export class ProjectLifecycleManager {
     return this.metaState.isUsingTypeScript ? 'ts' : 'js'
   }
 
+  get eventProcessPid () {
+    return this._configManager?.eventProcessPid
+  }
+
   clearCurrentProject () {
     this.resetInternalState()
     this._initializedProject = undefined
@@ -235,8 +240,6 @@ export class ProjectLifecycleManager {
           })
         }
 
-        const restartOnChange = validateNeedToRestartOnChange(this._cachedFullConfig, finalConfig)
-
         if (this._currentTestingType === 'component') {
           const devServerOptions = await this.ctx._apis.projectApi.getDevServer().start({ specs: this.ctx.project.specs, config: finalConfig })
 
@@ -245,13 +248,11 @@ export class ProjectLifecycleManager {
           }
 
           finalConfig.baseUrl = `http://localhost:${devServerOptions?.port}`
-
-          // Devserver can pick a random port, this solve the edge case where closing
-          // and spawning the devserver can result in a different baseUrl
-          if (this._cachedFullConfig && this._cachedFullConfig.baseUrl !== finalConfig.baseUrl) {
-            restartOnChange.server = true
-          }
         }
+
+        const pingBaseUrl = this._cachedFullConfig && this._cachedFullConfig.baseUrl !== finalConfig.baseUrl
+
+        const restartOnChange = validateNeedToRestartOnChange(this._cachedFullConfig, finalConfig)
 
         this._cachedFullConfig = finalConfig
 
@@ -268,6 +269,10 @@ export class ProjectLifecycleManager {
             this.ctx.project.setRelaunchBrowser(shouldRelaunchBrowser)
             await this.ctx.actions.browser.closeBrowser()
             await this.ctx.actions.browser.relaunchBrowser()
+          }
+
+          if (pingBaseUrl) {
+            this.ctx.actions.project.pingBaseUrl().catch(this.onLoadError)
           }
         }
 
@@ -305,18 +310,26 @@ export class ProjectLifecycleManager {
     const prefs = await this.ctx.project.getProjectPreferences(path.basename(this.projectRoot))
     const browsers = await this.ctx.browser.machineBrowsers()
 
-    if (!browsers[0]) throw new Error('No browsers available in setInitialActiveBrowser, cannot set initial active browser')
+    if (!browsers[0]) {
+      this.ctx.onError(getError('UNEXPECTED_INTERNAL_ERROR', new Error('No browsers found, cannot set a browser')))
 
-    this.ctx.coreData.activeBrowser = (prefs?.lastBrowser && browsers.find((b) => {
+      return
+    }
+
+    const browser = (prefs?.lastBrowser && browsers.find((b) => {
       return b.name === prefs.lastBrowser!.name && b.channel === prefs.lastBrowser!.channel
     })) || browsers[0]
+
+    this.ctx.actions.browser.setActiveBrowser(browser)
   }
 
   private async setActiveBrowserByNameOrPath (nameOrPath: string) {
     try {
       const browser = await this.ctx._apis.browserApi.ensureAndGetByNameOrPath(nameOrPath)
 
-      this.ctx.coreData.activeBrowser = browser
+      this.ctx.debug('browser found to set', browser.name)
+
+      this.ctx.actions.browser.setActiveBrowser(browser)
     } catch (e) {
       const error = e as CypressError
 
@@ -405,18 +418,21 @@ export class ProjectLifecycleManager {
     this.ctx.update((s) => {
       s.currentProject = projectRoot
       s.currentProjectGitInfo?.destroy()
-      s.currentProjectGitInfo = new GitDataSource({
-        isRunMode: this.ctx.isRunMode,
-        projectRoot,
-        onError: this.ctx.onError,
-        onBranchChange: () => {
-          this.ctx.emitter.branchChange()
-        },
-        onGitInfoChange: (specPaths) => {
-          this.ctx.emitter.gitInfoChange(specPaths)
-        },
-      })
+      if (!this.ctx.isRunMode) {
+        s.currentProjectGitInfo = new GitDataSource({
+          isRunMode: this.ctx.isRunMode,
+          projectRoot,
+          onError: this.ctx.onError,
+          onBranchChange: () => {
+            this.ctx.emitter.branchChange()
+          },
+          onGitInfoChange: (specPaths) => {
+            this.ctx.emitter.gitInfoChange(specPaths)
+          },
+        })
+      }
 
+      s.currentProjectData = { error: null, warnings: [], testingTypeData: null }
       s.packageManager = packageManagerUsed
     })
 
@@ -457,7 +473,7 @@ export class ProjectLifecycleManager {
       // we run the legacy plugins/index.js in a child process
       // and mutate the config based on the return value for migration
       // only used in open mode (cannot migrate via terminal)
-      const legacyConfig = this.ctx.fs.readJsonSync(legacyConfigPath) as LegacyCypressConfigJson
+      const legacyConfig = await this.ctx.fs.readJson(legacyConfigPath) as LegacyCypressConfigJson
 
       // should never throw, unless there existing pluginsFile errors out,
       // in which case they are attempting to migrate an already broken project.
@@ -486,6 +502,9 @@ export class ProjectLifecycleManager {
       d.currentTestingType = testingType
       d.wizard.chosenBundler = null
       d.wizard.chosenFramework = null
+      if (d.currentProjectData) {
+        d.currentProjectData.testingTypeData = makeTestingTypeData(testingType)
+      }
     })
 
     this._currentTestingType = testingType
@@ -504,6 +523,9 @@ export class ProjectLifecycleManager {
       d.currentTestingType = testingType
       d.wizard.chosenBundler = null
       d.wizard.chosenFramework = null
+      if (d.currentProjectData) {
+        d.currentProjectData.testingTypeData = makeTestingTypeData(testingType)
+      }
     })
 
     if (this._currentTestingType === testingType) {
@@ -518,6 +540,10 @@ export class ProjectLifecycleManager {
 
     if (!testingType) {
       return
+    }
+
+    if (this.ctx.isRunMode && this.loadedConfigFile && !this.isTestingTypeConfigured(testingType)) {
+      return this.ctx.onError(getError('TESTING_TYPE_NOT_CONFIGURED', testingType))
     }
 
     if (this.ctx.isRunMode || (this.isTestingTypeConfigured(testingType) && !(this.ctx.coreData.forceReconfigureProject && this.ctx.coreData.forceReconfigureProject[testingType]))) {
@@ -597,13 +623,15 @@ export class ProjectLifecycleManager {
     }
 
     try {
-      const packageJson = this.ctx.fs.readJsonSync(this._pathToFile('package.json'))
+      // TODO: convert to async FS method
+      // eslint-disable-next-line no-restricted-syntax
+      const pkgJson = this.ctx.fs.readJsonSync(this._pathToFile('package.json'))
 
-      if (packageJson.type === 'module') {
+      if (pkgJson.type === 'module') {
         metaState.isProjectUsingESModules = true
       }
 
-      metaState.isUsingTypeScript = detectLanguage(this.projectRoot, packageJson) === 'ts'
+      metaState.isUsingTypeScript = detectLanguage({ projectRoot: this.projectRoot, pkgJson, isMigrating: metaState.hasLegacyCypressJson }) === 'ts'
     } catch {
       // No need to handle
     }
@@ -679,6 +707,8 @@ export class ProjectLifecycleManager {
 
   private verifyProjectRoot (root: string) {
     try {
+      // TODO: convert to async fs call
+      // eslint-disable-next-line no-restricted-syntax
       if (!fs.statSync(root).isDirectory()) {
         throw new Error('NOT DIRECTORY')
       }

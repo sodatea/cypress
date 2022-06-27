@@ -18,6 +18,7 @@ function createDataContext (modeOptions?: Parameters<typeof createTestDataContex
   context.coreData.cliBrowser = undefined
 
   context._apis.browserApi.getBrowsers = sinon.stub().resolves(browsers)
+  context._apis.projectApi.insertProjectPreferencesToCache = sinon.stub()
   context.actions.project.launchProject = sinon.stub().resolves()
   context.project.getProjectPreferences = sinon.stub().resolves(null)
 
@@ -85,6 +86,24 @@ describe('ProjectLifecycleManager', () => {
 
       expect(ctx.coreData.activeBrowser).to.include({ name: 'electron' })
       expect(ctx.actions.project.launchProject).to.not.be.called
+    })
+  })
+
+  context('#eventProcessPid', () => {
+    it('returns process id from config manager', () => {
+      // @ts-expect-error
+      ctx.lifecycleManager._configManager = {
+        eventProcessPid: 12399,
+        destroy: () => {},
+      }
+
+      expect(ctx.lifecycleManager.eventProcessPid).to.eq(12399)
+    })
+
+    it('does not throw if config manager is not initialized', () => {
+      // @ts-expect-error
+      ctx.lifecycleManager._configManager = undefined
+      expect(ctx.lifecycleManager.eventProcessPid).to.eq(undefined)
     })
   })
 })

@@ -3043,7 +3043,7 @@ declare namespace Cypress {
     viteConfig?: Omit<Exclude<PickConfigOpt<'viteConfig'>, undefined>, 'base' | 'root'>
   }
 
-  interface ComponentConfigOptions<ComponentDevServerOpts = any> extends Omit<CoreConfigOptions, 'baseUrl'> {
+  interface ComponentConfigOptions<ComponentDevServerOpts = any> extends Omit<CoreConfigOptions, 'baseUrl' | 'experimentalSessionAndOrigin'> {
     devServer: DevServerFn<ComponentDevServerOpts> | DevServerConfigOptions
     devServerConfig?: ComponentDevServerOpts
   }
@@ -5500,7 +5500,7 @@ declare namespace Cypress {
 
   interface DevServerConfig {
     specs: Spec[]
-    config: ResolvedConfigOptions & RuntimeConfigOptions
+    cypressConfig: PluginConfigOptions
     devServerEvents: NodeJS.EventEmitter
   }
 

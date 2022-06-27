@@ -80,6 +80,27 @@ function renameSupport (lang: 'js' | 'ts' | 'coffee' = 'js') {
   }, { lang })
 }
 
+function stubVideoHtml (): void {
+  // ctx.migration.getVideoEmbedHtml
+  cy.withCtx((ctx, o) => {
+    o.sinon.stub(ctx.migration, 'getVideoEmbedHtml').callsFake(async () => {
+      return '<span>Stubbed Video Content</span>'
+    })
+  })
+}
+
+function unstubVideoHtml (): void {
+  cy.withCtx((ctx, o) => {
+    const restoreFn = (ctx.migration.getVideoEmbedHtml as SinonStub).restore
+
+    restoreFn?.()
+  })
+}
+
+beforeEach(() => {
+  stubVideoHtml()
+})
+
 describe('global mode', () => {
   it('migrates 2 projects in global mode', () => {
     cy.openGlobalMode()
@@ -88,7 +109,7 @@ describe('global mode', () => {
     cy.visitLaunchpad()
 
     cy.withCtx((ctx, o) => {
-      o.sinon.stub(ctx.actions.migration, 'locallyInstalledCypressVersion').returns('10.0.0')
+      o.sinon.stub(ctx.actions.migration, 'locallyInstalledCypressVersion').resolves('10.0.0')
     })
 
     cy.contains('migration-e2e-export-default').click()
@@ -146,8 +167,6 @@ describe('Opening unmigrated project', () => {
   })
 
   it('migration landing page appears with a video', () => {
-    cy.intercept(/vimeo.com/).as('iframeDocRequest')
-    cy.intercept(/vimeocdn/).as('vimeoCdnRequest')
     cy.scaffoldProject('migration')
     cy.openProject('migration')
     cy.visitLaunchpad()
@@ -159,15 +178,18 @@ describe('Opening unmigrated project', () => {
     .should('be.visible')
     .and('have.attr', 'href', 'https://on.cypress.io/changelog')
 
-    // Vimeo's implementation may change, this is just a high level check that
-    // the expected iframe code is being returned and that there is vimeo-related network traffic
-    cy.get('[data-cy="video-container"] iframe[src*=vimeo]').should('be.visible')
-    cy.wait('@iframeDocRequest')
-    cy.wait('@vimeoCdnRequest')
+    // Vimeo's implementation may change and we don't want to have an external dependency in this test,
+    // this is just a high level check that the mocked embed html from the on-link is being included
+    cy.get('[data-cy="video-container"]')
+    .contains('Stubbed Video Content')
+    .and('be.visible')
+
     cy.percySnapshot()
   })
 
   it('landing page does not appear if there is no video embed code', () => {
+    unstubVideoHtml()
+
     cy.scaffoldProject('migration')
     cy.openProject('migration')
     cy.withCtx((ctx, o) => {
@@ -182,6 +204,8 @@ describe('Opening unmigrated project', () => {
   })
 
   it('should only hit the video on link once & cache it', () => {
+    unstubVideoHtml()
+
     cy.scaffoldProject('migration')
     cy.openProject('migration')
 
@@ -486,6 +510,145 @@ describe('Full migration flow for each project', { retries: { openMode: 0, runMo
 
     cy.withRetryableCtx(async (ctx) => {
       const specs = ['src/basic.cy.js']
+
+      for (const spec of specs) {
+        const stats = await ctx.file.checkIfFileExists(ctx.path.join(spec))
+
+        expect(stats).to.not.be.null
+      }
+    })
+
+    renameSupport()
+    migrateAndVerifyConfig()
+    checkOutcome()
+  })
+
+  it('completes journey for migration-e2e-custom-supportFile', () => {
+    startMigrationFor('migration-e2e-custom-supportFile')
+    // default testFiles but custom integration - can rename automatically
+    cy.get(renameAutoStep).should('exist')
+    // no CT
+    cy.get(renameManualStep).should('not.exist')
+    // supportFile is custom - cannot rename
+    cy.get(renameSupportStep).should('not.exist')
+    cy.get(setupComponentStep).should('not.exist')
+    cy.get(configFileStep).should('exist')
+
+    // Migration workflow
+    // before auto migration
+    cy.contains('cypress/integration/basic.spec.js')
+
+    // after auto migration
+    cy.contains('cypress/e2e/basic.cy.js')
+
+    runAutoRename()
+
+    cy.withRetryableCtx(async (ctx) => {
+      const specs = ['cypress/e2e/basic.cy.js']
+
+      for (const spec of specs) {
+        const stats = await ctx.file.checkIfFileExists(ctx.path.join(spec))
+
+        expect(stats).to.not.be.null
+      }
+    })
+
+    migrateAndVerifyConfig()
+    checkOutcome()
+  })
+
+  it('completes journey for migration-e2e-custom-supportFile-default-value', () => {
+    startMigrationFor('migration-e2e-custom-supportFile-default-value')
+    // default testFiles but custom integration - can rename automatically
+    cy.get(renameAutoStep).should('exist')
+    // no CT
+    cy.get(renameManualStep).should('not.exist')
+    // supportFile is false - cannot migrate
+    cy.get(renameSupportStep).should('exist')
+    cy.get(setupComponentStep).should('not.exist')
+    cy.get(configFileStep).should('exist')
+
+    // Migration workflow
+    // before auto migration
+    cy.contains('cypress/integration/basic.spec.js')
+
+    // after auto migration
+    cy.contains('cypress/e2e/basic.cy.js')
+
+    runAutoRename()
+
+    cy.withRetryableCtx(async (ctx) => {
+      const specs = ['cypress/e2e/basic.cy.js']
+
+      for (const spec of specs) {
+        const stats = await ctx.file.checkIfFileExists(ctx.path.join(spec))
+
+        expect(stats).to.not.be.null
+      }
+    })
+
+    renameSupport()
+    migrateAndVerifyConfig()
+    checkOutcome()
+  })
+
+  it('completes journey for migration-e2e-custom-integration-default-value', () => {
+    startMigrationFor('migration-e2e-custom-integration-default-value')
+    // default testFiles but custom integration - can rename automatically
+    cy.get(renameAutoStep).should('exist')
+    // no CT
+    cy.get(renameManualStep).should('not.exist')
+    // supportFile is false - cannot migrate
+    cy.get(renameSupportStep).should('exist')
+    cy.get(setupComponentStep).should('not.exist')
+    cy.get(configFileStep).should('exist')
+
+    // Migration workflow
+    // before auto migration
+    cy.contains('cypress/integration/basic.spec.js')
+
+    // after auto migration
+    cy.contains('cypress/e2e/basic.cy.js')
+
+    runAutoRename()
+
+    cy.withRetryableCtx(async (ctx) => {
+      const specs = ['cypress/e2e/basic.cy.js']
+
+      for (const spec of specs) {
+        const stats = await ctx.file.checkIfFileExists(ctx.path.join(spec))
+
+        expect(stats).to.not.be.null
+      }
+    })
+
+    renameSupport()
+    migrateAndVerifyConfig()
+    checkOutcome()
+  })
+
+  it('completes journey for migration-e2e-custom-integration-default-value-and-testFiles', () => {
+    startMigrationFor('migration-e2e-custom-integration-default-value-and-testFiles')
+    // default testFiles but custom integration - can rename automatically
+    cy.get(renameAutoStep).should('exist')
+    // no CT
+    cy.get(renameManualStep).should('not.exist')
+    // supportFile is false - cannot migrate
+    cy.get(renameSupportStep).should('exist')
+    cy.get(setupComponentStep).should('not.exist')
+    cy.get(configFileStep).should('exist')
+
+    // Migration workflow
+    // before auto migration
+    cy.contains('cypress/integration/basic.spec.js')
+
+    // after auto migration
+    cy.contains('cypress/e2e/basic.spec.js')
+
+    runAutoRename()
+
+    cy.withRetryableCtx(async (ctx) => {
+      const specs = ['cypress/e2e/basic.spec.js']
 
       for (const spec of specs) {
         const stats = await ctx.file.checkIfFileExists(ctx.path.join(spec))
@@ -907,6 +1070,22 @@ describe('Full migration flow for each project', { retries: { openMode: 0, runMo
     cy.get(setupComponentStep).should('not.exist')
     cy.get(configFileStep).should('exist')
 
+    renameSupport()
+    migrateAndVerifyConfig()
+    checkOutcome()
+  })
+
+  it('completes journey for migration-e2e-plugins-implicit-index-js', () => {
+    startMigrationFor('migration-e2e-plugins-implicit-index-js')
+    // no specs, nothing to rename?
+    cy.get(renameAutoStep).should('exist')
+    // no CT
+    cy.get(renameManualStep).should('not.exist')
+    cy.get(renameSupportStep).should('exist')
+    cy.get(setupComponentStep).should('not.exist')
+    cy.get(configFileStep).should('exist')
+
+    runAutoRename()
     renameSupport()
     migrateAndVerifyConfig()
     checkOutcome()
@@ -1535,7 +1714,8 @@ describe('Migrate custom config files', () => {
   it('shows error if plugins file do not exist', () => {
     scaffoldAndVisitLaunchpad('migration', ['--config-file', 'erroredConfigFiles/incorrectPluginsFile.json'])
 
-    cy.contains(`${getPathForPlatform('foo/bar')} file threw an error.`)
-    cy.contains('Please ensure your pluginsFile is valid and relaunch the migration tool to migrate to Cypress version 10.0.0.')
+    const err = `Looked for pluginsFile at foo/bar, but it was not found.`
+
+    cy.contains(err)
   })
 })

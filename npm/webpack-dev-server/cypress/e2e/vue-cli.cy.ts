@@ -1,4 +1,3 @@
-// <reference types="cypress" />
 /// <reference path="../support/e2e.ts" />
 import type { ProjectFixtureDir } from '@tooling/system-tests/lib/fixtureDirs'
 
@@ -22,6 +21,7 @@ for (const project of PROJECTS) {
     it('should mount a passing test', () => {
       cy.visitApp()
       cy.contains('HelloWorld.cy.js').click()
+      cy.waitForSpecToFinish()
       cy.get('.passed > .num').should('contain', 1)
       cy.get('.commands-container').within(() => {
         cy.contains('mount')

@@ -1,5 +1,6 @@
-import { pipe, subscribe } from 'wonka'
-import { Exchange, Client, gql,
+import {
+  Exchange,
+  Client,
   createClient,
   dedupExchange,
   errorExchange,
@@ -21,6 +22,7 @@ import { namedRouteExchange } from './urqlExchangeNamedRoute'
 import type { SpecFile, AutomationElementId, Browser } from '@packages/types'
 import { urqlFetchSocketAdapter } from './urqlFetchSocketAdapter'
 import type { DocumentNode } from 'graphql'
+import { initializeGlobalSubscriptions } from './urqlGlobalSubscriptions'
 
 const toast = useToast()
 
@@ -82,6 +84,14 @@ interface AppUrqlClientConfig {
 
 export type UrqlClientConfig = LaunchpadUrqlClientConfig | AppUrqlClientConfig
 
+let timeoutId: NodeJS.Timeout | undefined
+
+export function clearPendingError () {
+  if (timeoutId) {
+    clearTimeout(timeoutId)
+  }
+}
+
 export async function makeUrqlClient (config: UrqlClientConfig): Promise<Client> {
   let hasError = false
 
@@ -114,12 +124,14 @@ export async function makeUrqlClient (config: UrqlClientConfig): Promise<Client>
 
         if (process.env.NODE_ENV !== 'production' && !hasError) {
           hasError = true
-          toast.error(message, {
-            timeout: false,
-            onClose () {
-              hasError = false
-            },
-          })
+          timeoutId = setTimeout(() => {
+            toast.error(message, {
+              timeout: false,
+              onClose () {
+                hasError = false
+              },
+            })
+          }, 1000)
         }
 
         // eslint-disable-next-line
@@ -165,21 +177,9 @@ export async function makeUrqlClient (config: UrqlClientConfig): Promise<Client>
 
   await connectPromise
 
-  // https://formidable.com/open-source/urql/docs/advanced/subscriptions/#one-off-subscriptions
-  pipe(
-    client.subscription(gql`
-      subscription urqlClient_PushFragment {
-        pushFragment {
-          target
-          fragment
-          data
-        }
-      }
-    `),
-    subscribe((val) => {
-      // console.log(val)
-    }),
-  )
+  if (window.__CYPRESS_MODE__ !== 'run') {
+    initializeGlobalSubscriptions(client)
+  }
 
   return client
 }

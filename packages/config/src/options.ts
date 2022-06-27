@@ -135,6 +135,7 @@ const resolvedOptions: Array<ResolvedConfigOption> = [
     defaultValue: null,
     validation: validate.isFullyQualifiedUrl,
     canUpdateDuringTestTime: true,
+    requireRestartOnChange: 'server',
   }, {
     name: 'blockHosts',
     defaultValue: null,
@@ -209,7 +210,7 @@ const resolvedOptions: Array<ResolvedConfigOption> = [
     defaultValue: false,
     validation: validate.isBoolean,
     isExperimental: true,
-    canUpdateDuringTestTime: true,
+    canUpdateDuringTestTime: false,
   }, {
     name: 'experimentalSourceRewriting',
     defaultValue: false,
@@ -350,7 +351,6 @@ const resolvedOptions: Array<ResolvedConfigOption> = [
     name: 'supportFile',
     defaultValue: (options: Record<string, any> = {}) => options.testingType === 'component' ? 'cypress/support/component.{js,jsx,ts,tsx}' : 'cypress/support/e2e.{js,jsx,ts,tsx}',
     validation: validate.isStringOrFalse,
-    isFolder: true,
     canUpdateDuringTestTime: false,
     requireRestartOnChange: 'server',
   }, {
@@ -418,6 +418,12 @@ const resolvedOptions: Array<ResolvedConfigOption> = [
     validation: validate.isBoolean,
     canUpdateDuringTestTime: false,
     requireRestartOnChange: 'server',
+  },
+  // Possibly add a defaultValue for specPattern https://github.com/cypress-io/cypress/issues/22507
+  {
+    name: 'specPattern',
+    validation: validate.isStringOrArrayOfStrings,
+    canUpdateDuringTestTime: false,
   },
 ]
 
@@ -638,6 +644,11 @@ export const breakingRootOptions: Array<BreakingOption> = [
     isWarning: false,
     testingTypes: ['e2e'],
   }, {
+    name: 'experimentalSessionAndOrigin',
+    errorKey: 'CONFIG_FILE_INVALID_ROOT_CONFIG_E2E',
+    isWarning: false,
+    testingTypes: ['e2e'],
+  }, {
     name: 'excludeSpecPattern',
     errorKey: 'CONFIG_FILE_INVALID_ROOT_CONFIG',
     isWarning: false,
@@ -681,6 +692,11 @@ export const testingTypeBreakingOptions: { e2e: Array<BreakingOption>, component
   component: [
     {
       name: 'baseUrl',
+      errorKey: 'CONFIG_FILE_INVALID_TESTING_TYPE_CONFIG_COMPONENT',
+      isWarning: false,
+    },
+    {
+      name: 'experimentalSessionAndOrigin',
       errorKey: 'CONFIG_FILE_INVALID_TESTING_TYPE_CONFIG_COMPONENT',
       isWarning: false,
     },

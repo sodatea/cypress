@@ -45,7 +45,6 @@ export const normalizeError = (error: Error | string) => {
 export class CypressCTWebpackPlugin {
   private files: Cypress.Cypress['spec'][] = []
   private supportFile: string | false
-  private errorEmitted = false
   private compilation: Webpack45Compilation | null = null
   private webpack: Function
 
@@ -94,55 +93,21 @@ export class CypressCTWebpackPlugin {
   }
 
   /*
-   * After compiling, we check for errors and inform the server of them.
-   */
-  private afterCompile = () => {
-    if (!this.compilation) {
-      return
-    }
-
-    const stats = this.compilation.getStats()
-
-    if (stats.hasErrors()) {
-      this.errorEmitted = true
-
-      // webpack 4: string[]
-      // webpack 5: Error[]
-      const errors = stats.toJson().errors as Array<Error | string> | undefined
-
-      if (!errors || !errors.length) {
-        return
-      }
-
-      this.devServerEvents.emit('dev-server:compile:error', normalizeError(errors[0]))
-    } else if (this.errorEmitted) {
-      // compilation succeed but assets haven't emitted to the output yet
-      this.devServerEvents.emit('dev-server:compile:error', null)
-    }
-  }
-
-  // After emitting assets, we tell the server compilation was successful
-  // so it can trigger a reload the AUT iframe.
-  private afterEmit = () => {
-    if (!this.compilation?.getStats().hasErrors()) {
-      this.devServerEvents.emit('dev-server:compile:success')
-    }
-  }
-
-  /*
    * `webpack --watch` watches the existing specs and their dependencies for changes,
    * but we also need to add additional dependencies to our dynamic "browser.js" (generated
    * using loader.ts) when new specs are created. This hook informs webpack that browser.js
    * has been "updated on disk", causing a recompliation (and pulling the new specs in as
    * dependencies).
    */
-  private onSpecsChange = (specs: Cypress.Cypress['spec'][]) => {
+  private onSpecsChange = async (specs: Cypress.Cypress['spec'][]) => {
     if (!this.compilation || _.isEqual(specs, this.files)) {
       return
     }
 
     this.files = specs
     const inputFileSystem = this.compilation.inputFileSystem
+    // TODO: don't use a sync fs method here
+    // eslint-disable-next-line no-restricted-syntax
     const utimesSync: UtimesSync = inputFileSystem.fileSystem.utimesSync ?? fs.utimesSync
 
     utimesSync(path.resolve(__dirname, 'browser.js'), new Date(), new Date())
@@ -178,8 +143,9 @@ export class CypressCTWebpackPlugin {
 
     this.devServerEvents.on('dev-server:specs:changed', this.onSpecsChange)
     _compiler.hooks.beforeCompile.tapAsync('CypressCTPlugin', this.beforeCompile)
-    _compiler.hooks.afterCompile.tap('CypressCTPlugin', this.afterCompile)
-    _compiler.hooks.afterEmit.tap('CypressCTPlugin', this.afterEmit)
     _compiler.hooks.compilation.tap('CypressCTPlugin', (compilation) => this.addCompilationHooks(compilation as Webpack45Compilation))
+    _compiler.hooks.done.tap('CypressCTPlugin', () => {
+      this.devServerEvents.emit('dev-server:compile:success')
+    })
   }
 }

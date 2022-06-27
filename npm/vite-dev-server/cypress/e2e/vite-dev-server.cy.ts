@@ -1,4 +1,3 @@
-/// <reference types="Cypress" />
 /// <reference path="../support/e2e.ts" />
 
 describe('Config options', () => {
@@ -9,6 +8,7 @@ describe('Config options', () => {
 
     cy.visitApp()
     cy.contains('App.cy.jsx').click()
+    cy.waitForSpecToFinish()
     cy.get('.passed > .num').should('contain', 1)
   })
 
@@ -27,5 +27,35 @@ describe('Config options', () => {
 
       expect(config.baseUrl).to.equal('http://localhost:3001')
     })
+  })
+
+  it('supports serving files with whitespace', () => {
+    const specWithWhitespace = 'spec with whitespace.cy.jsx'
+
+    cy.scaffoldProject('vite2.9.1-react')
+    cy.openProject('vite2.9.1-react', ['--config-file', 'cypress-vite.config.ts'])
+    cy.startAppServer('component')
+
+    cy.withCtx(async (ctx, { specWithWhitespace }) => {
+      await ctx.actions.file.writeFileInProject(
+        ctx.path.join('src', specWithWhitespace),
+        await ctx.file.readFileInProject(ctx.path.join('src', 'App.cy.jsx')),
+      )
+    }, { specWithWhitespace })
+
+    cy.visitApp()
+    cy.contains(specWithWhitespace).click()
+    cy.get('.passed > .num').should('contain', 1)
+  })
+
+  it('supports @cypress/vite-dev-server', () => {
+    cy.scaffoldProject('vite2.9.1-react')
+    cy.openProject('vite2.9.1-react', ['--config-file', 'cypress-vite-dev-server-function.config.ts'])
+    cy.startAppServer('component')
+
+    cy.visitApp()
+    cy.contains('App.cy.jsx').click()
+    cy.waitForSpecToFinish()
+    cy.get('.passed > .num').should('contain', 1)
   })
 })

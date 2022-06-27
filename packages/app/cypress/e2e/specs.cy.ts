@@ -187,7 +187,7 @@ describe('App: Specs', () => {
 
           cy.get('[data-cy="file-row"]').contains(getPathForPlatform('cypress/e2e/MyTest.cy.js')).click()
 
-          cy.get('pre').should('contain', 'describe(\'MyTest.cy.js\'')
+          cy.get('pre').should('contain', 'describe(\'empty spec\'')
 
           cy.percySnapshot('Generator success')
 
@@ -278,7 +278,7 @@ describe('App: Specs', () => {
 
           cy.percySnapshot('Generator success')
 
-          cy.get('pre').should('contain', 'describe(\'MyTest.cy.ts\'')
+          cy.get('pre').should('contain', 'describe(\'empty spec\'')
 
           cy.get('[aria-label="Close"]').click()
 
@@ -412,13 +412,43 @@ describe('App: Specs', () => {
 
           cy.get('[data-cy="file-row"]').contains(getPathForPlatform('src/MyTest.cy.js')).click()
 
-          cy.get('pre').should('contain', 'describe(\'MyTest.cy.js\'')
+          cy.get('pre').should('contain', 'describe(\'empty spec\'')
 
           cy.percySnapshot('Generator success')
 
           cy.get('[aria-label="Close"]').click()
 
           cy.visitApp().get('[data-cy-row]').contains('MyTest.cy.js')
+        })
+
+        it('generates spec with file name that does not contain a known spec extension', () => {
+          cy.withCtx(async (ctx) => {
+            let config = await ctx.actions.file.readFileInProject('cypress.config.js')
+
+            config = config.replace(
+                `specPattern: 'src/**/*.{cy,spec}.{js,jsx}'`,
+                `specPattern: 'src/e2e/**/*.{js,jsx}'`,
+            )
+
+            await ctx.actions.file.writeFileInProject('cypress.config.js', config)
+          })
+
+          // Timeout is increased here to allow ample time for the config change to be processed
+          cy.contains('No Specs Found', { timeout: 10000 }).should('be.visible')
+
+          cy.findByRole('button', { name: 'New Spec' }).click()
+          cy.contains('Create new empty spec').click()
+
+          cy.findAllByLabelText(defaultMessages.createSpec.e2e.importEmptySpec.inputPlaceholder)
+          .as('enterSpecInput')
+
+          cy.get('@enterSpecInput').invoke('val').should('eq', getPathForPlatform('src/e2e/spec.js'))
+          cy.contains(defaultMessages.createSpec.e2e.importEmptySpec.invalidSpecWarning).should('not.exist')
+
+          cy.contains('button', defaultMessages.createSpec.createSpec).should('not.be.disabled').click()
+          cy.contains('h2', defaultMessages.createSpec.successPage.header)
+
+          cy.get('[data-cy="file-row"]').contains(getPathForPlatform('src/e2e/spec.js')).should('be.visible')
         })
       })
 
@@ -666,6 +696,37 @@ describe('App: Specs', () => {
         cy.contains('Cancel').click()
 
         cy.findByRole('dialog', { name: 'Enter the path for your new spec' }).should('not.exist')
+      })
+
+      it('generates spec with file name that does not contain a known spec extension', () => {
+        cy.withCtx(async (ctx) => {
+          let config = await ctx.actions.file.readFileInProject('cypress.config.js')
+
+          config = config.replace(
+              `specPattern: 'src/specs-folder/*.cy.{js,jsx}'`,
+              `specPattern: 'src/specs-folder/*.{js,jsx}'`,
+          )
+
+          await ctx.actions.file.writeFileInProject('cypress.config.js', config)
+        })
+
+        // Timeout is increased here to allow ample time for the config change to be processed
+        cy.contains('No Specs Found', { timeout: 10000 }).should('be.visible')
+        cy.findByRole('button', { name: 'New Spec' }).click()
+
+        cy.findByRole('dialog', {
+          name: 'Enter the path for your new spec',
+        }).within(() => {
+          cy.findByLabelText('Enter a relative path...').invoke('val').should('eq', getPathForPlatform('src/specs-folder/ComponentName.js'))
+
+          cy.findByRole('button', { name: 'Create Spec' }).click()
+        })
+
+        cy.findByRole('dialog', {
+          name: defaultMessages.createSpec.successPage.header,
+        }).as('SuccessDialog').within(() => {
+          cy.contains(getPathForPlatform('src/specs-folder/ComponentName.js')).should('be.visible')
+        })
       })
     })
   })
